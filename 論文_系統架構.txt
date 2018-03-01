@@ -1,0 +1,51 @@
+深入理解C#
+深入理解SVG
+
+a.身份註冊流程
+  (1)公司法人簽約,在系統註冊公司識別碼(BusinessID)
+  (2)註冊外部控制主機,註冊過程,外部控制主機MacID即會綁定BusinessID, 以主機MacID為MQTT系統的身份識別
+  (3)所屬公司法人的員工,下載APP,進行初步身份註冊,同樣須綁定BusinessID, 同時會產生16位元的亂數識別碼,
+     作為該用戶的MQTT系統的身份識別
+  (4)外部控制主機/所屬公司法人員工在註冊完成後, 即會在ACL資料表新增二者的可訂閱/推播的topic權限
+
+  Exemple:外部控制主機:(A)S:/BusinessID/App(App修改參數指令) (B)S:/BusinessID/Configuare(管制中心修改參數指令)
+          所屬公司法人員工:(A)P:@/身份ID/BusinessID/App, (B)S:/BusinessID/Alert(接收異常事件)
+          iot server:(A)P:@/身份ID/#/Alert
+
+b.MQTT連線身份驗證流程
+  (1)外部控制主機:外部控制主機初始運行時,透過主機本身MacID與所屬BusinessID進行身份登入,取得連線MQTT BROKER的IP/PORT與密碼,mosquitto
+     broker查驗通過後,主機即訂閱"/BusinessID/App"及"/BusinessID/Configuare"二個topic.
+     
+  (2)公司所屬法人員工:員工啟動app,輸入當初設定帳號/密碼, BusinessID再與管制中心進行身份查驗後,取得連線MQTT BROKER的IP/PORT與密碼,
+     mosquitto broker查驗通過後,app即訂閱"/BusinessID/Alert"topic.
+
+c.訊息流轉介流程
+  異常事件訊息流:
+  (1)外部控制主機收到自sensor傳送的異常數據,即透過webapi傳送時間, 外部控制主機對應BusinessID以及該異常數據到後端iot server, 
+     iot server接收到該BusinessID異常數據後,即以"@/iot server clientID/BussinessID/Alert"的topic名稱,進行推播動作, 而轉介程式在收到該
+     topic的訊息流後,自topic的轉介識別字元及BusinessID,判斷須將該訊息流轉推給"BusinessID"對應的mosquitto broker, 即以"/BusinessID/Alert"
+     為topic轉推播給該"BusinessID"對應的mosquitto broker, 而訂閱該mosquitto broker所屬公司法人員工由於同樣是連線到該mosquitto broker
+     可訂閱為"/BusinessID/Alert", 即可接收該異常數據..
+  
+  指令訊息流:
+  (2)指令相關的訊息流, 主要是由管制中心與手機使用者所發佈, 目的進行對外部控制主機內部運行參數進行調整修改用.
+     管制中心傳送修改參數指令(topic:@/BusinessID/Configuare)給"不對外服務的mosqitto broker", 轉介程式接收到修改參數指令後,同樣自topic
+     的轉介識別字元及BusinessID,判斷須將該訊息流轉推給"BusinessID"對應的mosquitto broker, 即以"/BusinessID/Configuare"
+     為topic轉推播給該"BusinessID"對應的mosquitto broker, 訂閱該mosquitto broker的外部控制主機由於同樣是連線到該mosquitto broker
+     可訂閱為"/BusinessID/Configuare", 即可接收到修改參數指令,進行調整.
+
+d.訊息流驗證流程
+  訊息流的驗證,驗證與被驗證都是在轉介程式, Mqtt Client(轉介程式)應該僅有內部運行的Client,才是真正授權的, 為防止外部也有相同轉介的
+  Client也嘗試進行相同轉介訊息動作,必須設置內部抓證機制, 透過內部轉介程式, 每次轉介的訊息, 在payload中,加入一組十六位元加密碼,轉介後,
+  轉介程式會再次接收到本身剛轉介的message, 再解密比對該加密碼, 以查驗證該訊息是否是本身轉出去.
+
+
+e.外部控制主機連線狀態監控流程
+  在iot server初始運行時, 即在記憶體新建一個Collection<Bussiness>泛型類的容器,紀錄所有外部控制主機的連線(報到)時間與狀態.
+  外部控制主機透過iot server的webapi,對iot server進行報到動作(post參數:time及BusinessID),iot server本身內部設置排程器,其10秒執行1次為頻率,
+  其排程工作內容,為loop所有在Collection<Bussiness>裡的BusinessID及time(最近一次報到時間),比對其time與執行排程的當下時間進行計算,若間隔秒
+  數超過"設定時間",則iot server即會判斷該BusinessID外部控制主機已斷線狀態,即會對"/BussinessID/Alert"topic發佈主機離線相關事件.
+ 
+
+
+
