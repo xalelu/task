@@ -1,2 +1,1 @@
-SAM
-tina
+master_sam_and_tina
